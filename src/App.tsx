@@ -180,7 +180,20 @@ function App() {
   const totalMines = board.filter((cell) => cell.isMine).length;
   const estimatedMines = totalMines - flagCount;
   // --- ここまで追加 ---
+  // --- 🌟 追加: タイマー用の State ---
+  const [time, setTime] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
   // 🌟 新機能: 盤面が変化するたびにクリア・ゲームオーバーを判定する
+  // --- 🌟 追加: 1秒ごとに時間を進めるタイマーのロジック ---
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isRunning) {
+      timer = setInterval(() => {
+        setTime((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isRunning]);
   useEffect(() => {
     // プレイ中でなければ判定処理を行わない
     if (gameState !== 'playing') return;
@@ -189,6 +202,7 @@ function App() {
     const isGameOver = board.some(cell => cell.status === 'revealed' && cell.isMine);
     if (isGameOver) {
       setGameState('gameOver');
+      setIsRunning(false); // 👈 🌟 追加: ゲームオーバー時にタイマー停止
       // すべての地雷を強制的に表示する（踏んだ地雷は exploded を true にして赤くする）
       setBoard(prev => prev.map(cell =>
         cell.isMine
@@ -206,6 +220,7 @@ function App() {
 
     if (revealedCount === (COLS * ROWS) - totalMines) {
       setGameState('gameClear');
+      setIsRunning(false); // 👈 🌟 追加: ゲームクリア時にタイマー停止
       // クリア演出として、すべての地雷マスに自動で旗を立てる
       setBoard(prev => prev.map(cell =>
         cell.isMine ? { ...cell, status: 'flagged' } : cell
@@ -222,7 +237,10 @@ function App() {
       // 🌟【重要】もしまだ地雷が配置されていない場合、クリックされたマスを安全地帯として盤面を生成
       const hasMines = prevBoard.some(cell => cell.isMine);
       const currentBoard = hasMines ? prevBoard : generateBoard(COLS, ROWS, id);
-
+      // --- 🌟 追加: 初回クリック時（地雷生成の瞬間）にタイマーを開始 ---
+      if (!hasMines) {
+        setIsRunning(true);
+      }
       const newBoard = currentBoard.map(cell => ({ ...cell }));
       const clickedCell = newBoard[id];
 
@@ -352,6 +370,11 @@ function App() {
             <span className="text-xl">🚩</span>
             <span>旗: {flagCount}</span>
           </div>
+          {/* --- 🌟 追加: タイム表示部分 --- */}
+          <div className="flex items-center gap-1">
+            <span className="text-xl">⏱️</span>
+            <span>タイム: {time}秒</span>
+          </div>
           <div className="flex items-center gap-1">
             <span className="text-xl">💣</span>
             <span>残りの爆弾: {estimatedMines}</span>
@@ -369,8 +392,11 @@ function App() {
             onClick={() => {
               setBoard(createEmptyBoard(COLS, ROWS)); // 盤面を再生成
               setGameState('playing'); // 状態をプレイ中に戻す
+              setTime(0);          // 👈 🌟 追加: タイムを0にリセット
+              setIsRunning(false); // 👈 🌟 追加: タイマーを停止状態にする
             }}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 active:bg-blue-700 font-bold shadow-md transition-colors"
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 
+            active:bg-blue-700 font-bold shadow-md transition-colors"
           >
             リスタート
           </button>
