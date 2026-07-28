@@ -29,7 +29,7 @@ const DIFFICULTIES: Record<Difficulty, { name: string; cols: number; rows: numbe
 };
 
 // (cols, rows の固定定数は削除して、Appコンポーネント内で管理します)
-  const createEmptyBoard = (cols: number, rows: number): CellData[] => {
+const createEmptyBoard = (cols: number, rows: number): CellData[] => {
   return Array.from({ length: cols * rows }, (_, index) => ({
     id: index,
     status: 'hidden',
@@ -37,56 +37,6 @@ const DIFFICULTIES: Record<Difficulty, { name: string; cols: number; rows: numbe
     number: 0,
   }));
 };
-// 盤面を自動生成し、地雷の配置と数字を計算する関数
-// --- 🌟【修正】セーフスタート対応の盤面生成関数 ---
-const generateBoard = (cols: number, rows: number, safeIndex: number): CellData[] => {
-  const safeX = safeIndex % cols;
-  const safeY = Math.floor(safeIndex / cols);
-
-  // 1. マスを生成（安全地帯以外で20%の確率でランダムに地雷を配置）
-  const initialBoard: CellData[] = Array.from({ length: cols * rows }, (_, index) => {
-    const x = index % cols;
-    const y = Math.floor(index / cols);
-
-    // 安全地帯（クリックしたマスとその周囲8マス）かどうか
-    const isSafeZone = Math.abs(x - safeX) <= 1 && Math.abs(y - safeY) <= 1;
-
-    return {
-      id: index,
-      status: 'hidden',
-      isMine: !isSafeZone && Math.random() < 0.2,
-      number: 0,
-    };
-  });
-
-  // 2. 地雷以外のマスについて、周囲8方向の地雷の数を計算する
-  for (let i = 0; i < initialBoard.length; i++) {
-    if (initialBoard[i].isMine) continue;
-
-    const x = i % cols;
-    const y = Math.floor(i / cols);
-    let mineCount = 0;
-
-    // 周囲8方向をループして確認
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        // 盤面の内側にある場合のみカウント
-        if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
-          const neighborIndex = ny * cols + nx;
-          if (initialBoard[neighborIndex].isMine) {
-            mineCount++;
-          }
-        }
-      }
-    }
-    initialBoard[i].number = mineCount;
-  }
-
-  return initialBoard;
-};
-// --- ここまで追記 ---
 
 // ---------------------------------------------------------
 // GridCellコンポーネントは元のコードのまま変更なしでOKです！
@@ -174,13 +124,15 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
 function App() {
   // 🌟 追加: 選択中の難易度を管理するステート（初期値は 'easy'）
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
-  
+  // 🌟 追加: 地雷確率を管理するステート（初期値: 20%）
+  const [mineProbability, setMineProbability] = useState<number>(20);
+
   // 現在の列数・行数を取得
   const cols = DIFFICULTIES[difficulty].cols;
   const rows = DIFFICULTIES[difficulty].rows;
 
   const [board, setBoard] = useState<CellData[]>(() => createEmptyBoard(cols, rows));
-  
+
   // ... (タイマーやゲーム状態のステートはそのまま)
   // 関数を使って自動生成するように変更
   // const [board, setBoard] = useState<CellData[]>(() => createEmptyBoard(cols, rows));
@@ -202,7 +154,58 @@ function App() {
   // --- 🌟 変更: ミリ秒単位で時間を管理する State ---
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
-  // 🌟 新機能: 盤面が変化するたびにクリア・ゲームオーバーを判定する
+  // 盤面を自動生成し、地雷の配置と数字を計算する関数
+  // --- 🌟【修正】セーフスタート対応の盤面生成関数 ---
+  const generateBoard = (cols: number, rows: number, safeIndex: number): CellData[] => {
+    const safeX = safeIndex % cols;
+    const safeY = Math.floor(safeIndex / cols);
+    const probability = mineProbability / 100; // パーセンテージを小数に変換
+
+    // 1. マスを生成（安全地帯以外で20%の確率でランダムに地雷を配置）
+    const initialBoard: CellData[] = Array.from({ length: cols * rows }, (_, index) => {
+      const x = index % cols;
+      const y = Math.floor(index / cols);
+
+      // 安全地帯（クリックしたマスとその周囲8マス）かどうか
+      const isSafeZone = Math.abs(x - safeX) <= 1 && Math.abs(y - safeY) <= 1;
+
+      return {
+        id: index,
+        status: 'hidden',
+        // 🌟 変更: 固定の0.2から動的な確率に変更
+        isMine: !isSafeZone && Math.random() < probability,
+        number: 0,
+      };
+    });
+
+    // 2. 地雷以外のマスについて、周囲8方向の地雷の数を計算する
+    for (let i = 0; i < initialBoard.length; i++) {
+      if (initialBoard[i].isMine) continue;
+
+      const x = i % cols;
+      const y = Math.floor(i / cols);
+      let mineCount = 0;
+
+      // 周囲8方向をループして確認
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          // 盤面の内側にある場合のみカウント
+          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+            const neighborIndex = ny * cols + nx;
+            if (initialBoard[neighborIndex].isMine) {
+              mineCount++;
+            }
+          }
+        }
+      }
+      initialBoard[i].number = mineCount;
+    }
+
+    return initialBoard;
+  };
+  // --- ここまで追記 ---
   // --- 🌟 追加: 1秒ごとに時間を進めるタイマーのロジック ---
   // --- 🌟 変更: requestAnimationFrame を使った高精度タイマー ---
   useEffect(() => {
@@ -220,6 +223,7 @@ function App() {
 
     return () => cancelAnimationFrame(animationFrameId);
   }, [isRunning]);
+  // 🌟 新機能: 盤面が変化するたびにクリア・ゲームオーバーを判定する
   useEffect(() => {
     // プレイ中でなければ判定処理を行わない
     if (gameState !== 'playing') return;
@@ -401,17 +405,33 @@ function App() {
                 setElapsedTime(0);
                 setIsRunning(false);
               }}
-              className={`px-3 py-1 rounded-md font-bold text-sm transition-colors ${
-                difficulty === key
-                  ? 'bg-blue-600 text-white shadow'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
+              className={`px-3 py-1 rounded-md font-bold text-sm transition-colors ${difficulty === key
+                ? 'bg-blue-600 text-white shadow'
+                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                }`}
             >
               {DIFFICULTIES[key].name}
             </button>
           ))}
         </div>
         {/* --- ここまで --- */}
+        {/* --- 🌟 追加: サイズ選択の下に配置した地雷確率のスライドバー UI --- */}
+        <div className="mb-4 flex flex-col items-center gap-1 bg-slate-100 p-3 rounded-md border border-slate-300">
+          <div className="flex justify-between w-full max-w-xs text-sm font-bold text-slate-700">
+            <span>地雷確率</span>
+            <span>{mineProbability}%</span>
+          </div>
+          <input
+            type="range"
+            min="10"
+            max="50"
+            step="5"
+            value={mineProbability}
+            disabled={isRunning} // 👈 ゲーム開始後はスライドバーを無効化
+            onChange={(e) => setMineProbability(Number(e.target.value))}
+            className="w-full max-w-xs cursor-pointer accent-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+        </div>
         {/* --- ここからカウンター表示領域を追加 --- */}
         <div className="mb-4 p-3 bg-slate-200 border-2 border-slate-300 rounded-md 
           flex justify-between items-center font-mono font-bold text-slate-700 shadow-inner">
