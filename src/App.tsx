@@ -39,43 +39,47 @@ const createEmptyBoard = (cols: number, rows: number): CellData[] => {
 };
 
 // ---------------------------------------------------------
-// GridCellコンポーネントは元のコードのまま変更なしでOKです！
+// 修正版 GridCell コンポーネント（開いていないマスの影なし）
 // ---------------------------------------------------------
 function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick }: CellProps) {
+  // 共通のベーススタイル（サイズとFlexbox設定・1pxの均一ボーダー）
+  const baseStyle = "w-10 h-10 flex items-center justify-center font-mono font-bold text-xl select-none box-border border border-slate-400";
+
   if (status === "hidden") {
     return (
       <button
         onClick={onClick}
         onContextMenu={onRightClick}
-        className="
-        w-10 h-10 
+        className={`
+        ${baseStyle}
+        // 影を削除し、フラットな背景色を設定
         bg-slate-300 
-        border-t-2 border-l-2 border-white/80
-        border-b-2 border-r-2 border-slate-500
-        shadow-md shadow-slate-900/20
+        // ホバー時は少し明るく
         hover:bg-slate-200 
-        active:border-t-slate-500 active:border-l-slate-500
-        active:border-b-white/80 active:border-r-white/80
-        active:shadow-inner active:shadow-slate-900/10
-        transition-all duration-75
-        flex items-center justify-center
-        font-mono font-bold text-xl
+        // クリック時はさらに明るく（沈み込みの代わりに）
+        active:bg-slate-200/50
+        transition-colors duration-75
         cursor-pointer
-        ">
+        `}
+      >
+        {/* 中身は空 */}
       </button>
     );
   }
-  // GridCell関数内の status === "revealed" の部分を修正
+
   if (status === "revealed") {
     if (isMine) {
       return (
-        <div className={`w-10 h-10 flex items-center justify-center font-bold text-xl border border-slate-400 ${exploded ? 'bg-red-500' : 'bg-slate-200'}`}>
+        <div className={`
+          ${baseStyle}
+          ${exploded ? 'bg-red-500' : 'bg-slate-200'}
+        `}>
           💣
         </div>
       );
     }
+
     const getNumberColor = (num: number) => {
-      // ...（既存の色分けコードそのまま）...
       switch (num) {
         case 1: return 'text-blue-600';
         case 2: return 'text-green-600';
@@ -88,10 +92,17 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
         default: return 'text-transparent';
       }
     };
+
     return (
       <div
-        onClick={onClick} /* 👈 これを追加して、開いたマスもクリックできるようにする */
-        className="w-10 h-10 bg-slate-200 hover:bg-slate-300 border border-slate-400 flex items-center justify-center font-mono font-bold text-lg select-none cursor-pointer transition-colors" /* 👈 hoverやcursorを追加 */
+        onClick={onClick}
+        className={`
+          ${baseStyle}
+          bg-slate-200 
+          hover:bg-slate-300 
+          cursor-pointer 
+          transition-colors
+        `}
       >
         {number > 0 ? (
           <span className={getNumberColor(number)}>{number}</span>
@@ -101,21 +112,23 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
       </div>
     );
   }
+
   if (status === "flagged") {
     return (
       <button
         onContextMenu={onRightClick}
-        className="
-          w-10 h-10 bg-slate-300 
-          border-t-2 border-l-2 border-white/80
-          border-b-2 border-r-2 border-slate-500
-          flex items-center justify-center text-xl cursor-pointer
-        "
+        className={`
+          ${baseStyle}
+          bg-slate-300 
+          cursor-pointer
+        `}
       >
         🚩
       </button>
     );
   }
+  
+  return null;
 }
 
 // ---------------------------------------------------------
