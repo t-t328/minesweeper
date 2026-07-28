@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 type CellStatus = "hidden" | "revealed" | "flagged";
@@ -15,6 +15,7 @@ interface CellData {
   status: CellStatus;
   number: number;
   isMine: boolean;
+  exploded?: boolean; // 👈 これを追記
 }
 // --- ここから追記 ---
 // 盤面のサイズを変数化（ここを自由に変更できます！）
@@ -146,6 +147,9 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
 function App() {
   // 関数を使って自動生成するように変更
   const [board, setBoard] = useState<CellData[]>(() => generateBoard(COLS, ROWS));
+  // 🌟 新機能: ゲームの状態を管理する state を追加
+  type GameState = 'playing' | 'gameOver' | 'gameClear';
+  const [gameState, setGameState] = useState<GameState>('playing');
   // --- ここから追加 ---
   // 1. すでに立てた旗の数
   const flagCount = board.filter((cell) => cell.status === 'flagged').length;
@@ -157,10 +161,41 @@ function App() {
   const totalMines = board.filter((cell) => cell.isMine).length;
   const estimatedMines = totalMines - flagCount;
   // --- ここまで追加 ---
+  // 🌟 新機能: 盤面が変化するたびにクリア・ゲームオーバーを判定する
+  useEffect(() => {
+    // プレイ中でなければ判定処理を行わない
+    if (gameState !== 'playing') return;
+
+    // ① ゲームオーバー判定: 「開かれている(revealed)」かつ「地雷(isMine)」のマスが1つでもあればアウト
+    const isGameOver = board.some(cell => cell.status === 'revealed' && cell.isMine);
+    if (isGameOver) {
+      setGameState('gameOver');
+      // すべての地雷を強制的に表示する（踏んだ地雷は exploded を true にして赤くする）
+      setBoard(prev => prev.map(cell => 
+        cell.isMine 
+          ? { ...cell, status: 'revealed', exploded: cell.status === 'revealed' } 
+          : cell
+      ));
+      return;
+    }
+
+    // ② ゲームクリア判定: (全マス数 - 地雷の数) と (開かれたマスの数) が一致するか
+    const totalMines = board.filter(cell => cell.isMine).length;
+    const revealedCount = board.filter(cell => cell.status === 'revealed').length;
+    
+    if (revealedCount === (COLS * ROWS) - totalMines) {
+      setGameState('gameClear');
+      // クリア演出として、すべての地雷マスに自動で旗を立てる
+      setBoard(prev => prev.map(cell => 
+        cell.isMine ? { ...cell, status: 'flagged' } : cell
+      ));
+    }
+  }, [board, gameState]); // 👈 board か gameState が変化するたびに実行される
   // 左クリック処理（変更なし・1次元配列になったため正常に動作します）
   // --- 修正: 連鎖オープン対応のクリック処理 ---
 // --- 修正: ショートカット機能と連鎖オープンを統合したクリック処理 ---
   const handleCellClick = (id: number) => {
+    if (gameState !== 'playing') return; // 👈 プレイ中以外はクリック操作を無視
     setBoard((prevBoard) => {
       const newBoard = prevBoard.map(cell => ({ ...cell }));
       const clickedCell = newBoard[id];
@@ -267,6 +302,7 @@ function App() {
   // 右クリック処理（変更なし）
   const handleCellRightClick = (e: React.MouseEvent, id: number) => {
     e.preventDefault();
+    if (gameState !== 'playing') return; // 👈 プレイ中以外は右クリックを無視
     setBoard((prevBoard) =>
       prevBoard.map((cell) => {
         if (cell.id === id) {
@@ -282,7 +318,7 @@ function App() {
   return (
     <section id="main" className="flex items-center justify-center min-h-screen bg-slate-50">
       <div className="p-10">
-        <h1 className="mb-6 text-2xl font-bold text-center text-slate-700">Minesweeper</h1>
+        <h1 className="mb-6 text-2xl font-bold text-center !text-slate-950">Minesweeper</h1>
         {/* --- ここからカウンター表示領域を追加 --- */}
         <div className="mb-4 p-3 bg-slate-200 border-2 border-slate-300 rounded-md 
           flex justify-between items-center font-mono font-bold text-slate-700 shadow-inner">
@@ -296,6 +332,23 @@ function App() {
           </div>
         </div>
         {/* --- ここまで追加 --- */}
+        {/* 🌟 新機能: ゲーム状態の表示とリスタートボタン */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-xl font-bold text-slate-700">
+            {gameState === 'playing' && 'プレイ中...'}
+            {gameState === 'gameOver' && 'ゲームオーバー'}
+            {gameState === 'gameClear' && '🥳 ゲームクリア！'}
+          </div>
+          <button 
+            onClick={() => {
+              setBoard(generateBoard(COLS, ROWS)); // 盤面を再生成
+              setGameState('playing'); // 状態をプレイ中に戻す
+            }}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 active:bg-blue-700 font-bold shadow-md transition-colors"
+          >
+            リスタート
+          </button>
+        </div>
         {/* CSS Gridを使って3x3の盤面を構成 */}
         <div
           className="inline-grid gap-0.5 bg-slate-400 border-2 border-slate-500 p-1"
@@ -308,6 +361,7 @@ function App() {
               status={cell.status}
               number={cell.number}
               isMine={cell.isMine}
+              exploded={cell.exploded} // 👈 これを追記！
               onClick={() => handleCellClick(cell.id)}
               onRightClick={(e) => handleCellRightClick(e, cell.id)}
             />
