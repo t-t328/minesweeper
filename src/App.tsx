@@ -16,6 +16,49 @@ interface CellData {
   number: number;
   isMine: boolean;
 }
+// --- ここから追記 ---
+// 盤面のサイズを変数化（ここを自由に変更できます！）
+const COLS = 9; // 列数（横）
+const ROWS = 9; // 行数（縦）
+
+// 盤面を自動生成し、地雷の配置と数字を計算する関数
+const generateBoard = (cols: number, rows: number): CellData[] => {
+  // 1. マスを生成（20%の確率でランダムに地雷を配置）
+  const initialBoard: CellData[] = Array.from({ length: cols * rows }, (_, index) => ({
+    id: index,
+    status: 'hidden',
+    isMine: Math.random() < 0.2,
+    number: 0,
+  }));
+
+  // 2. 地雷以外のマスについて、周囲8方向の地雷の数を計算する
+  for (let i = 0; i < initialBoard.length; i++) {
+    if (initialBoard[i].isMine) continue;
+
+    const x = i % cols;
+    const y = Math.floor(i / cols);
+    let mineCount = 0;
+
+    // 周囲8方向をループして確認
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        // 盤面の内側にある場合のみカウント
+        if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+          const neighborIndex = ny * cols + nx;
+          if (initialBoard[neighborIndex].isMine) {
+            mineCount++;
+          }
+        }
+      }
+    }
+    initialBoard[i].number = mineCount;
+  }
+
+  return initialBoard;
+};
+// --- ここまで追記 ---
 
 // ---------------------------------------------------------
 // GridCellコンポーネントは元のコードのまま変更なしでOKです！
@@ -96,18 +139,8 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
 // Appコンポーネントのリファクタリング
 // ---------------------------------------------------------
 function App() {
-  // 修正点1: 1次元配列 (CellData[]) として定義し直しました
-  const [board, setBoard] = useState<CellData[]>([
-    { id: 0, status: 'hidden', isMine: false, number: 0 },
-    { id: 1, status: 'hidden', isMine: false, number: 1 },
-    { id: 2, status: 'hidden', isMine: true,  number: 0 }, // 💣 地雷あり
-    { id: 3, status: 'hidden', isMine: false, number: 1 },
-    { id: 4, status: 'hidden', isMine: false, number: 2 }, // 周囲に2個の地雷
-    { id: 5, status: 'hidden', isMine: false, number: 1 },
-    { id: 6, status: 'hidden', isMine: true,  number: 0 }, // 💣 地雷あり
-    { id: 7, status: 'hidden', isMine: false, number: 1 },
-    { id: 8, status: 'hidden', isMine: false, number: 0 },
-  ]);
+  // 関数を使って自動生成するように変更
+  const [board, setBoard] = useState<CellData[]>(() => generateBoard(COLS, ROWS));
 
   // 左クリック処理（変更なし・1次元配列になったため正常に動作します）
   const handleCellClick = (id: number) => {
@@ -140,11 +173,12 @@ function App() {
     <section id="main" className="flex items-center justify-center min-h-screen bg-slate-50">
       <div className="p-10">
         <h1 className="mb-6 text-2xl font-bold text-center text-slate-700">Minesweeper</h1>
-        
+
         {/* CSS Gridを使って3x3の盤面を構成 */}
-        <div 
-          className="grid gap-0.5 bg-slate-400 border-2 border-slate-500 p-1" 
-          style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+        <div
+          className="inline-grid gap-0.5 bg-slate-400 border-2 border-slate-500 p-1"
+          // バッククォート (`) と ${} を使って、COLS 変数を埋め込みます
+          style={{ gridTemplateColumns: `repeat(${COLS}, 2.5rem)` }}
         >
           {board.map((cell) => (
             <GridCell
