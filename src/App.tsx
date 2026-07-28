@@ -127,7 +127,7 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
       </button>
     );
   }
-  
+
   return null;
 }
 
@@ -150,8 +150,10 @@ function App() {
   // 関数を使って自動生成するように変更
   // const [board, setBoard] = useState<CellData[]>(() => createEmptyBoard(cols, rows));
   // 🌟 新機能: ゲームの状態を管理する state を追加
-  type GameState = 'playing' | 'gameOver' | 'gameClear';
-  const [gameState, setGameState] = useState<GameState>('playing');
+  // 🌟 修正: 'standby' を追加
+  type GameState = 'standby' | 'playing' | 'gameOver' | 'gameClear';
+  // 🌟 修正: 初期状態を 'standby' に設定
+  const [gameState, setGameState] = useState<GameState>('standby');
   // --- ここから追加 ---
   // 1. すでに立てた旗の数
   const flagCount = board.filter((cell) => cell.status === 'flagged').length;
@@ -274,8 +276,8 @@ function App() {
   // --- 修正: 連鎖オープン対応のクリック処理 ---
   // --- 修正: ショートカット機能と連鎖オープンを統合したクリック処理 ---
   const handleCellClick = (id: number) => {
-    if (gameState !== 'playing') return; // 👈 プレイ中以外はクリック操作を無視
-
+    // 🌟 修正: 'standby' または 'playing' のときだけクリックを許可（ゲームオーバー/クリア時は無効）
+    if (gameState === 'gameOver' || gameState === 'gameClear') return;
     setBoard((prevBoard) => {
       // 🌟【重要】もしまだ地雷が配置されていない場合、クリックされたマスを安全地帯として盤面を生成
       const hasMines = prevBoard.some(cell => cell.isMine);
@@ -283,6 +285,7 @@ function App() {
       // --- 🌟 追加: 初回クリック時（地雷生成の瞬間）にタイマーを開始 ---
       if (!hasMines) {
         setIsRunning(true);
+        setGameState('playing'); // 👈 🌟 追加: 初手クリック時に 'playing' に切り替える
       }
       const newBoard = currentBoard.map(cell => ({ ...cell }));
       const clickedCell = newBoard[id];
@@ -414,7 +417,7 @@ function App() {
               onClick={() => {
                 setDifficulty(key);
                 setBoard(createEmptyBoard(DIFFICULTIES[key].cols, DIFFICULTIES[key].rows));
-                setGameState('playing');
+                setGameState('standby'); // 👈 🌟 追加: 難易度変更時に状態をスタンバイに戻す
                 setElapsedTime(0);
                 setIsRunning(false);
               }}
@@ -467,6 +470,7 @@ function App() {
         {/* 🌟 新機能: ゲーム状態の表示とリスタートボタン */}
         <div className="mb-4 flex items-center justify-between">
           <div className="text-xl font-bold text-slate-700">
+            {gameState === 'standby' && 'クリックしてスタート'} {/* 👈 🌟 追加 */}
             {gameState === 'playing' && `タイム: ${(elapsedTime / 1000).toFixed(2)}秒`}
             {gameState === 'gameOver' && 'ゲームオーバー'}
             {gameState === 'gameClear' && `タイム: ${(elapsedTime / 1000).toFixed(2)}秒`}
@@ -474,7 +478,7 @@ function App() {
           <button
             onClick={() => {
               setBoard(createEmptyBoard(cols, rows)); // 盤面を再生成
-              setGameState('playing'); // 状態をプレイ中に戻す
+              setGameState('standby'); // 状態をスタンバイに戻す
               setElapsedTime(0);          // 👈 🌟 追加: タイムを0にリセット
               setIsRunning(false); // 👈 🌟 追加: タイマーを停止状態にする
             }}
