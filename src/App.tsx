@@ -181,18 +181,26 @@ function App() {
   const estimatedMines = totalMines - flagCount;
   // --- ここまで追加 ---
   // --- 🌟 追加: タイマー用の State ---
-  const [time, setTime] = useState(0);
+  // --- 🌟 変更: ミリ秒単位で時間を管理する State ---
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   // 🌟 新機能: 盤面が変化するたびにクリア・ゲームオーバーを判定する
   // --- 🌟 追加: 1秒ごとに時間を進めるタイマーのロジック ---
+  // --- 🌟 変更: requestAnimationFrame を使った高精度タイマー ---
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let animationFrameId: number;
+    // タイマー再開時や開始時のズレを防ぐため、基準となる開始時刻を計算
+    let startTime = Date.now() - elapsedTime;
+
     if (isRunning) {
-      timer = setInterval(() => {
-        setTime((prev) => prev + 1);
-      }, 1000);
+      const updateTimer = () => {
+        setElapsedTime(Date.now() - startTime);
+        animationFrameId = requestAnimationFrame(updateTimer);
+      };
+      animationFrameId = requestAnimationFrame(updateTimer);
     }
-    return () => clearInterval(timer);
+
+    return () => cancelAnimationFrame(animationFrameId);
   }, [isRunning]);
   useEffect(() => {
     // プレイ中でなければ判定処理を行わない
@@ -371,10 +379,11 @@ function App() {
             <span>旗: {flagCount}</span>
           </div>
           {/* --- 🌟 追加: タイム表示部分 --- */}
-          <div className="flex items-center gap-1">
+          {/* --- 🌟 変更: ミリ秒を秒に変換し、小数点第2位まで表示 --- */}
+          {/* <div className="flex items-center gap-1">
             <span className="text-xl">⏱️</span>
-            <span>タイム: {time}秒</span>
-          </div>
+            <span>タイム: {(elapsedTime / 1000).toFixed(2)}秒</span>
+          </div> */}
           <div className="flex items-center gap-1">
             <span className="text-xl">💣</span>
             <span>残りの爆弾: {estimatedMines}</span>
@@ -384,15 +393,15 @@ function App() {
         {/* 🌟 新機能: ゲーム状態の表示とリスタートボタン */}
         <div className="mb-4 flex items-center justify-between">
           <div className="text-xl font-bold text-slate-700">
-            {gameState === 'playing' && 'プレイ中...'}
+            {gameState === 'playing' && `タイム: ${(elapsedTime / 1000).toFixed(2)}秒`}
             {gameState === 'gameOver' && 'ゲームオーバー'}
-            {gameState === 'gameClear' && '🥳 ゲームクリア！'}
+            {gameState === 'gameClear' && `タイム: ${(elapsedTime / 1000).toFixed(2)}秒`}
           </div>
           <button
             onClick={() => {
               setBoard(createEmptyBoard(COLS, ROWS)); // 盤面を再生成
               setGameState('playing'); // 状態をプレイ中に戻す
-              setTime(0);          // 👈 🌟 追加: タイムを0にリセット
+              setElapsedTime(0);          // 👈 🌟 追加: タイムを0にリセット
               setIsRunning(false); // 👈 🌟 追加: タイマーを停止状態にする
             }}
             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 
