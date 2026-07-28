@@ -87,6 +87,7 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
       </button>
     );
   }
+  // GridCell関数内の status === "revealed" の部分を修正
   if (status === "revealed") {
     if (isMine) {
       return (
@@ -96,6 +97,7 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
       );
     }
     const getNumberColor = (num: number) => {
+      // ...（既存の色分けコードそのまま）...
       switch (num) {
         case 1: return 'text-blue-600';
         case 2: return 'text-green-600';
@@ -109,7 +111,10 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
       }
     };
     return (
-      <div className="w-10 h-10 bg-slate-200 border border-slate-400 flex items-center justify-center font-mono font-bold text-lg select-none">
+      <div
+        onClick={onClick} /* 👈 これを追加して、開いたマスもクリックできるようにする */
+        className="w-10 h-10 bg-slate-200 hover:bg-slate-300 border border-slate-400 flex items-center justify-center font-mono font-bold text-lg select-none cursor-pointer transition-colors" /* 👈 hoverやcursorを追加 */
+      >
         {number > 0 ? (
           <span className={getNumberColor(number)}>{number}</span>
         ) : (
@@ -146,60 +151,107 @@ function App() {
   const flagCount = board.filter((cell) => cell.status === 'flagged').length;
 
   // 2. まだ開けられていないマスの中に残っている実際の爆弾の数
-  const remainingMines = board.filter((cell) => cell.isMine && cell.status !== 'revealed').length;
+  // const remainingMines = board.filter((cell) => cell.isMine && cell.status !== 'revealed').length;
 
   // 3. (おまけ) マインスイーパーの伝統的な表示（全体の地雷数 - 旗の数）
   const totalMines = board.filter((cell) => cell.isMine).length;
   const estimatedMines = totalMines - flagCount;
   // --- ここまで追加 ---
   // 左クリック処理（変更なし・1次元配列になったため正常に動作します）
-// --- 修正: 連鎖オープン対応のクリック処理 ---
+  // --- 修正: 連鎖オープン対応のクリック処理 ---
+// --- 修正: ショートカット機能と連鎖オープンを統合したクリック処理 ---
   const handleCellClick = (id: number) => {
     setBoard((prevBoard) => {
-      // 1. 状態を安全に更新するため、盤面のディープコピーを作成
       const newBoard = prevBoard.map(cell => ({ ...cell }));
       const clickedCell = newBoard[id];
 
-      // 既に開いているマスや、旗が立っているマスをクリックした場合は何もせず元の状態を返す
-      if (clickedCell.status !== 'hidden') {
+      // 旗が立っているマスをクリックした場合は何もしない
+      if (clickedCell.status === 'flagged') {
         return prevBoard;
       }
 
-      // 2. 連鎖オープン処理のために、処理待ちのマスのIDを格納するスタック（配列）を用意
-      const stack = [id];
+      const stack: number[] = [];
+      let stateChanged = false; // 盤面に変化があったかどうかを判定するフラグ
 
-      // スタックが空になるまでループ処理
+      // 🌟【新機能】すでに開かれている「数字マス」をクリックした場合
+      if (clickedCell.status === 'revealed' && clickedCell.number > 0) {
+        const x = id % COLS;
+        const y = Math.floor(id / COLS);
+        const unrevealedNeighbors: number[] = []; // 周囲の開いていないマス(hidden or flagged)
+        let flagCount = 0; // 周囲の旗の数
+
+        // 周囲8方向を調査
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+
+            if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
+              const neighborId = ny * COLS + nx;
+              const neighborCell = newBoard[neighborId];
+              
+              if (neighborCell.status !== 'revealed') {
+                unrevealedNeighbors.push(neighborId);
+                if (neighborCell.status === 'flagged') {
+                  flagCount++;
+                }
+              }
+            }
+          }
+        }
+
+        // 💡 パターンA: 周囲の「開いていないマスの数」と「マスの数字」が同じなら、すべて旗を立てる
+        if (unrevealedNeighbors.length === clickedCell.number) {
+          unrevealedNeighbors.forEach(nid => {
+            if (newBoard[nid].status === 'hidden') {
+              newBoard[nid].status = 'flagged';
+              stateChanged = true;
+            }
+          });
+        } 
+        // 💡 パターンB: 周囲の「旗の数」と「マスの数字」が同じなら、残りのマスをすべて開く
+        else if (flagCount === clickedCell.number) {
+          unrevealedNeighbors.forEach(nid => {
+            if (newBoard[nid].status === 'hidden') {
+              stack.push(nid); // 開く処理のスタックに追加
+            }
+          });
+        }
+        
+        // どちらの条件も満たさない、かつ盤面に変化がない場合は元の状態を返す
+        if (stack.length === 0 && !stateChanged) return prevBoard;
+      } 
+      // 🌟【既存機能】隠されているマスを通常クリックした場合
+      else if (clickedCell.status === 'hidden') {
+        stack.push(id);
+      }
+
+      // --- 共通: スタックに積まれたマスを開く処理（連鎖オープン含む） ---
       while (stack.length > 0) {
-        // スタックから1つマスのIDを取り出す
         const currentId = stack.pop()!;
         const currentCell = newBoard[currentId];
 
         // 既に処理済みの場合はスキップ
         if (currentCell.status !== 'hidden') continue;
 
-        // マスを開く
         currentCell.status = 'revealed';
+        stateChanged = true;
 
-        // 3. もし開いたマスが「0」かつ「地雷ではない」場合、周囲8方向をスタックに追加する
+        // 連鎖オープン：開いたマスが「0」なら周囲をスタックに追加
         if (currentCell.number === 0 && !currentCell.isMine) {
-          const x = currentId % COLS;
-          const y = Math.floor(currentId / COLS);
+          const cx = currentId % COLS;
+          const cy = Math.floor(currentId / COLS);
 
-          // 周囲8方向のループ
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
-              if (dx === 0 && dy === 0) continue; // 自分自身はスキップ
+              if (dx === 0 && dy === 0) continue;
+              const nx = cx + dx;
+              const ny = cy + dy;
 
-              const nx = x + dx;
-              const ny = y + dy;
-
-              // 盤面の範囲内かチェック
               if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
                 const neighborId = ny * COLS + nx;
-                const neighborCell = newBoard[neighborId];
-
-                // 周囲のマスがまだ隠されていれば、スタックに追加して後で開く
-                if (neighborCell.status === 'hidden') {
+                if (newBoard[neighborId].status === 'hidden') {
                   stack.push(neighborId);
                 }
               }
@@ -208,8 +260,8 @@ function App() {
         }
       }
 
-      // 4. 連鎖処理がすべて終わった新しい盤面を返す
-      return newBoard;
+      // 何か変更があった場合のみ新しい盤面を返す
+      return stateChanged ? newBoard : prevBoard;
     });
   };
   // 右クリック処理（変更なし）
@@ -232,7 +284,8 @@ function App() {
       <div className="p-10">
         <h1 className="mb-6 text-2xl font-bold text-center text-slate-700">Minesweeper</h1>
         {/* --- ここからカウンター表示領域を追加 --- */}
-        <div className="mb-4 p-3 bg-slate-200 border-2 border-slate-300 rounded-md flex justify-between items-center font-mono font-bold text-slate-700 shadow-inner">
+        <div className="mb-4 p-3 bg-slate-200 border-2 border-slate-300 rounded-md 
+          flex justify-between items-center font-mono font-bold text-slate-700 shadow-inner">
           <div className="flex items-center gap-1">
             <span className="text-xl">🚩</span>
             <span>旗: {flagCount}</span>
