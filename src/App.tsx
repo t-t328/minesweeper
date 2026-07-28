@@ -141,19 +141,77 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
 function App() {
   // 関数を使って自動生成するように変更
   const [board, setBoard] = useState<CellData[]>(() => generateBoard(COLS, ROWS));
+  // --- ここから追加 ---
+  // 1. すでに立てた旗の数
+  const flagCount = board.filter((cell) => cell.status === 'flagged').length;
 
+  // 2. まだ開けられていないマスの中に残っている実際の爆弾の数
+  const remainingMines = board.filter((cell) => cell.isMine && cell.status !== 'revealed').length;
+
+  // 3. (おまけ) マインスイーパーの伝統的な表示（全体の地雷数 - 旗の数）
+  const totalMines = board.filter((cell) => cell.isMine).length;
+  const estimatedMines = totalMines - flagCount;
+  // --- ここまで追加 ---
   // 左クリック処理（変更なし・1次元配列になったため正常に動作します）
+// --- 修正: 連鎖オープン対応のクリック処理 ---
   const handleCellClick = (id: number) => {
-    setBoard((prevBoard) =>
-      prevBoard.map((cell) => {
-        if (cell.id === id) {
-          return { ...cell, status: 'revealed' };
-        }
-        return cell;
-      })
-    );
-  };
+    setBoard((prevBoard) => {
+      // 1. 状態を安全に更新するため、盤面のディープコピーを作成
+      const newBoard = prevBoard.map(cell => ({ ...cell }));
+      const clickedCell = newBoard[id];
 
+      // 既に開いているマスや、旗が立っているマスをクリックした場合は何もせず元の状態を返す
+      if (clickedCell.status !== 'hidden') {
+        return prevBoard;
+      }
+
+      // 2. 連鎖オープン処理のために、処理待ちのマスのIDを格納するスタック（配列）を用意
+      const stack = [id];
+
+      // スタックが空になるまでループ処理
+      while (stack.length > 0) {
+        // スタックから1つマスのIDを取り出す
+        const currentId = stack.pop()!;
+        const currentCell = newBoard[currentId];
+
+        // 既に処理済みの場合はスキップ
+        if (currentCell.status !== 'hidden') continue;
+
+        // マスを開く
+        currentCell.status = 'revealed';
+
+        // 3. もし開いたマスが「0」かつ「地雷ではない」場合、周囲8方向をスタックに追加する
+        if (currentCell.number === 0 && !currentCell.isMine) {
+          const x = currentId % COLS;
+          const y = Math.floor(currentId / COLS);
+
+          // 周囲8方向のループ
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue; // 自分自身はスキップ
+
+              const nx = x + dx;
+              const ny = y + dy;
+
+              // 盤面の範囲内かチェック
+              if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
+                const neighborId = ny * COLS + nx;
+                const neighborCell = newBoard[neighborId];
+
+                // 周囲のマスがまだ隠されていれば、スタックに追加して後で開く
+                if (neighborCell.status === 'hidden') {
+                  stack.push(neighborId);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 4. 連鎖処理がすべて終わった新しい盤面を返す
+      return newBoard;
+    });
+  };
   // 右クリック処理（変更なし）
   const handleCellRightClick = (e: React.MouseEvent, id: number) => {
     e.preventDefault();
@@ -173,7 +231,18 @@ function App() {
     <section id="main" className="flex items-center justify-center min-h-screen bg-slate-50">
       <div className="p-10">
         <h1 className="mb-6 text-2xl font-bold text-center text-slate-700">Minesweeper</h1>
-
+        {/* --- ここからカウンター表示領域を追加 --- */}
+        <div className="mb-4 p-3 bg-slate-200 border-2 border-slate-300 rounded-md flex justify-between items-center font-mono font-bold text-slate-700 shadow-inner">
+          <div className="flex items-center gap-1">
+            <span className="text-xl">🚩</span>
+            <span>旗: {flagCount}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xl">💣</span>
+            <span>残りの爆弾: {estimatedMines}</span>
+          </div>
+        </div>
+        {/* --- ここまで追加 --- */}
         {/* CSS Gridを使って3x3の盤面を構成 */}
         <div
           className="inline-grid gap-0.5 bg-slate-400 border-2 border-slate-500 p-1"
