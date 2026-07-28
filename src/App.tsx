@@ -21,16 +21,35 @@ interface CellData {
 // 盤面のサイズを変数化（ここを自由に変更できます！）
 const COLS = 9; // 列数（横）
 const ROWS = 9; // 行数（縦）
-
-// 盤面を自動生成し、地雷の配置と数字を計算する関数
-const generateBoard = (cols: number, rows: number): CellData[] => {
-  // 1. マスを生成（20%の確率でランダムに地雷を配置）
-  const initialBoard: CellData[] = Array.from({ length: cols * rows }, (_, index) => ({
+const createEmptyBoard = (cols: number, rows: number): CellData[] => {
+  return Array.from({ length: cols * rows }, (_, index) => ({
     id: index,
     status: 'hidden',
-    isMine: Math.random() < 0.2,
+    isMine: false,
     number: 0,
   }));
+};
+// 盤面を自動生成し、地雷の配置と数字を計算する関数
+// --- 🌟【修正】セーフスタート対応の盤面生成関数 ---
+const generateBoard = (cols: number, rows: number, safeIndex: number): CellData[] => {
+  const safeX = safeIndex % cols;
+  const safeY = Math.floor(safeIndex / cols);
+
+  // 1. マスを生成（安全地帯以外で20%の確率でランダムに地雷を配置）
+  const initialBoard: CellData[] = Array.from({ length: cols * rows }, (_, index) => {
+    const x = index % cols;
+    const y = Math.floor(index / cols);
+
+    // 安全地帯（クリックしたマスとその周囲8マス）かどうか
+    const isSafeZone = Math.abs(x - safeX) <= 1 && Math.abs(y - safeY) <= 1;
+
+    return {
+      id: index,
+      status: 'hidden',
+      isMine: !isSafeZone && Math.random() < 0.2,
+      number: 0,
+    };
+  });
 
   // 2. 地雷以外のマスについて、周囲8方向の地雷の数を計算する
   for (let i = 0; i < initialBoard.length; i++) {
@@ -146,7 +165,7 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
 // ---------------------------------------------------------
 function App() {
   // 関数を使って自動生成するように変更
-  const [board, setBoard] = useState<CellData[]>(() => generateBoard(COLS, ROWS));
+  const [board, setBoard] = useState<CellData[]>(() => createEmptyBoard(COLS, ROWS));
   // 🌟 新機能: ゲームの状態を管理する state を追加
   type GameState = 'playing' | 'gameOver' | 'gameClear';
   const [gameState, setGameState] = useState<GameState>('playing');
@@ -171,9 +190,9 @@ function App() {
     if (isGameOver) {
       setGameState('gameOver');
       // すべての地雷を強制的に表示する（踏んだ地雷は exploded を true にして赤くする）
-      setBoard(prev => prev.map(cell => 
-        cell.isMine 
-          ? { ...cell, status: 'revealed', exploded: cell.status === 'revealed' } 
+      setBoard(prev => prev.map(cell =>
+        cell.isMine
+          ? { ...cell, status: 'revealed', exploded: cell.status === 'revealed' }
           : cell
       ));
       return;
@@ -181,23 +200,30 @@ function App() {
 
     // ② ゲームクリア判定: (全マス数 - 地雷の数) と (開かれたマスの数) が一致するか
     const totalMines = board.filter(cell => cell.isMine).length;
+    // まだ地雷が配置されていない（初期状態）のときはクリア判定を行わない
+    if (totalMines === 0) return;
     const revealedCount = board.filter(cell => cell.status === 'revealed').length;
-    
+
     if (revealedCount === (COLS * ROWS) - totalMines) {
       setGameState('gameClear');
       // クリア演出として、すべての地雷マスに自動で旗を立てる
-      setBoard(prev => prev.map(cell => 
+      setBoard(prev => prev.map(cell =>
         cell.isMine ? { ...cell, status: 'flagged' } : cell
       ));
     }
   }, [board, gameState]); // 👈 board か gameState が変化するたびに実行される
   // 左クリック処理（変更なし・1次元配列になったため正常に動作します）
   // --- 修正: 連鎖オープン対応のクリック処理 ---
-// --- 修正: ショートカット機能と連鎖オープンを統合したクリック処理 ---
+  // --- 修正: ショートカット機能と連鎖オープンを統合したクリック処理 ---
   const handleCellClick = (id: number) => {
     if (gameState !== 'playing') return; // 👈 プレイ中以外はクリック操作を無視
+
     setBoard((prevBoard) => {
-      const newBoard = prevBoard.map(cell => ({ ...cell }));
+      // 🌟【重要】もしまだ地雷が配置されていない場合、クリックされたマスを安全地帯として盤面を生成
+      const hasMines = prevBoard.some(cell => cell.isMine);
+      const currentBoard = hasMines ? prevBoard : generateBoard(COLS, ROWS, id);
+
+      const newBoard = currentBoard.map(cell => ({ ...cell }));
       const clickedCell = newBoard[id];
 
       // 旗が立っているマスをクリックした場合は何もしない
@@ -225,7 +251,7 @@ function App() {
             if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
               const neighborId = ny * COLS + nx;
               const neighborCell = newBoard[neighborId];
-              
+
               if (neighborCell.status !== 'revealed') {
                 unrevealedNeighbors.push(neighborId);
                 if (neighborCell.status === 'flagged') {
@@ -244,7 +270,7 @@ function App() {
               stateChanged = true;
             }
           });
-        } 
+        }
         // 💡 パターンB: 周囲の「旗の数」と「マスの数字」が同じなら、残りのマスをすべて開く
         else if (flagCount === clickedCell.number) {
           unrevealedNeighbors.forEach(nid => {
@@ -253,10 +279,10 @@ function App() {
             }
           });
         }
-        
+
         // どちらの条件も満たさない、かつ盤面に変化がない場合は元の状態を返す
         if (stack.length === 0 && !stateChanged) return prevBoard;
-      } 
+      }
       // 🌟【既存機能】隠されているマスを通常クリックした場合
       else if (clickedCell.status === 'hidden') {
         stack.push(id);
@@ -339,9 +365,9 @@ function App() {
             {gameState === 'gameOver' && 'ゲームオーバー'}
             {gameState === 'gameClear' && '🥳 ゲームクリア！'}
           </div>
-          <button 
+          <button
             onClick={() => {
-              setBoard(generateBoard(COLS, ROWS)); // 盤面を再生成
+              setBoard(createEmptyBoard(COLS, ROWS)); // 盤面を再生成
               setGameState('playing'); // 状態をプレイ中に戻す
             }}
             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 active:bg-blue-700 font-bold shadow-md transition-colors"
