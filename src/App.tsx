@@ -19,9 +19,17 @@ interface CellData {
 }
 // --- ここから追記 ---
 // 盤面のサイズを変数化（ここを自由に変更できます！）
-const COLS = 9; // 列数（横）
-const ROWS = 9; // 行数（縦）
-const createEmptyBoard = (cols: number, rows: number): CellData[] => {
+// --- 🌟 追加: 難易度（サイズ）のプリセット定義 ---
+type Difficulty = 'easy' | 'medium' | 'hard';
+
+const DIFFICULTIES: Record<Difficulty, { name: string; cols: number; rows: number }> = {
+  easy: { name: '小 (9x9)', cols: 9, rows: 9 },
+  medium: { name: '中 (12x12)', cols: 12, rows: 12 },
+  hard: { name: '大 (16x16)', cols: 16, rows: 16 },
+};
+
+// (cols, rows の固定定数は削除して、Appコンポーネント内で管理します)
+  const createEmptyBoard = (cols: number, rows: number): CellData[] => {
   return Array.from({ length: cols * rows }, (_, index) => ({
     id: index,
     status: 'hidden',
@@ -164,8 +172,18 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
 // Appコンポーネントのリファクタリング
 // ---------------------------------------------------------
 function App() {
+  // 🌟 追加: 選択中の難易度を管理するステート（初期値は 'easy'）
+  const [difficulty, setDifficulty] = useState<Difficulty>('easy');
+  
+  // 現在の列数・行数を取得
+  const cols = DIFFICULTIES[difficulty].cols;
+  const rows = DIFFICULTIES[difficulty].rows;
+
+  const [board, setBoard] = useState<CellData[]>(() => createEmptyBoard(cols, rows));
+  
+  // ... (タイマーやゲーム状態のステートはそのまま)
   // 関数を使って自動生成するように変更
-  const [board, setBoard] = useState<CellData[]>(() => createEmptyBoard(COLS, ROWS));
+  // const [board, setBoard] = useState<CellData[]>(() => createEmptyBoard(cols, rows));
   // 🌟 新機能: ゲームの状態を管理する state を追加
   type GameState = 'playing' | 'gameOver' | 'gameClear';
   const [gameState, setGameState] = useState<GameState>('playing');
@@ -226,7 +244,7 @@ function App() {
     if (totalMines === 0) return;
     const revealedCount = board.filter(cell => cell.status === 'revealed').length;
 
-    if (revealedCount === (COLS * ROWS) - totalMines) {
+    if (revealedCount === (cols * rows) - totalMines) {
       setGameState('gameClear');
       setIsRunning(false); // 👈 🌟 追加: ゲームクリア時にタイマー停止
       // クリア演出として、すべての地雷マスに自動で旗を立てる
@@ -244,7 +262,7 @@ function App() {
     setBoard((prevBoard) => {
       // 🌟【重要】もしまだ地雷が配置されていない場合、クリックされたマスを安全地帯として盤面を生成
       const hasMines = prevBoard.some(cell => cell.isMine);
-      const currentBoard = hasMines ? prevBoard : generateBoard(COLS, ROWS, id);
+      const currentBoard = hasMines ? prevBoard : generateBoard(cols, rows, id);
       // --- 🌟 追加: 初回クリック時（地雷生成の瞬間）にタイマーを開始 ---
       if (!hasMines) {
         setIsRunning(true);
@@ -262,8 +280,8 @@ function App() {
 
       // 🌟【新機能】すでに開かれている「数字マス」をクリックした場合
       if (clickedCell.status === 'revealed' && clickedCell.number > 0) {
-        const x = id % COLS;
-        const y = Math.floor(id / COLS);
+        const x = id % cols;
+        const y = Math.floor(id / cols);
         const unrevealedNeighbors: number[] = []; // 周囲の開いていないマス(hidden or flagged)
         let flagCount = 0; // 周囲の旗の数
 
@@ -274,8 +292,8 @@ function App() {
             const nx = x + dx;
             const ny = y + dy;
 
-            if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
-              const neighborId = ny * COLS + nx;
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+              const neighborId = ny * cols + nx;
               const neighborCell = newBoard[neighborId];
 
               if (neighborCell.status !== 'revealed') {
@@ -327,8 +345,8 @@ function App() {
 
         // 連鎖オープン：開いたマスが「0」なら周囲をスタックに追加
         if (currentCell.number === 0 && !currentCell.isMine) {
-          const cx = currentId % COLS;
-          const cy = Math.floor(currentId / COLS);
+          const cx = currentId % cols;
+          const cy = Math.floor(currentId / cols);
 
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
@@ -336,8 +354,8 @@ function App() {
               const nx = cx + dx;
               const ny = cy + dy;
 
-              if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
-                const neighborId = ny * COLS + nx;
+              if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                const neighborId = ny * cols + nx;
                 if (newBoard[neighborId].status === 'hidden') {
                   stack.push(neighborId);
                 }
@@ -371,6 +389,29 @@ function App() {
     <section id="main" className="flex items-center justify-center min-h-screen bg-slate-50">
       <div className="p-10">
         <h1 className="mb-6 text-2xl font-bold text-center !text-slate-950">Minesweeper</h1>
+        {/* --- 🌟 追加: タイトルの下のサイズ選択ボタン UI --- */}
+        <div className="my-4 flex justify-center gap-2">
+          {(Object.keys(DIFFICULTIES) as Difficulty[]).map((key) => (
+            <button
+              key={key}
+              onClick={() => {
+                setDifficulty(key);
+                setBoard(createEmptyBoard(DIFFICULTIES[key].cols, DIFFICULTIES[key].rows));
+                setGameState('playing');
+                setElapsedTime(0);
+                setIsRunning(false);
+              }}
+              className={`px-3 py-1 rounded-md font-bold text-sm transition-colors ${
+                difficulty === key
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              }`}
+            >
+              {DIFFICULTIES[key].name}
+            </button>
+          ))}
+        </div>
+        {/* --- ここまで --- */}
         {/* --- ここからカウンター表示領域を追加 --- */}
         <div className="mb-4 p-3 bg-slate-200 border-2 border-slate-300 rounded-md 
           flex justify-between items-center font-mono font-bold text-slate-700 shadow-inner">
@@ -399,7 +440,7 @@ function App() {
           </div>
           <button
             onClick={() => {
-              setBoard(createEmptyBoard(COLS, ROWS)); // 盤面を再生成
+              setBoard(createEmptyBoard(cols, rows)); // 盤面を再生成
               setGameState('playing'); // 状態をプレイ中に戻す
               setElapsedTime(0);          // 👈 🌟 追加: タイムを0にリセット
               setIsRunning(false); // 👈 🌟 追加: タイマーを停止状態にする
@@ -413,8 +454,8 @@ function App() {
         {/* CSS Gridを使って3x3の盤面を構成 */}
         <div
           className="inline-grid gap-0.5 bg-slate-400 border-2 border-slate-500 p-1"
-          // バッククォート (`) と ${} を使って、COLS 変数を埋め込みます
-          style={{ gridTemplateColumns: `repeat(${COLS}, 2.5rem)` }}
+          // バッククォート (`) と ${} を使って、cols 変数を埋め込みます
+          style={{ gridTemplateColumns: `repeat(${cols}, 2.5rem)` }}
         >
           {board.map((cell) => (
             <GridCell
