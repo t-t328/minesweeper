@@ -130,6 +130,235 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
 
   return null;
 }
+// 盤面を自動生成し、地雷の配置と数字を計算する関数
+// --- 🌟【修正】セーフスタート対応の盤面生成関数 ---
+const generateBoard = (cols: number, rows: number, safeIndex: number, mineProbability: number): CellData[] => {
+  const safeX = safeIndex % cols;
+  const safeY = Math.floor(safeIndex / cols);
+  const probability = mineProbability / 100; // パーセンテージを小数に変換
+
+  // 1. マスを生成（安全地帯以外で20%の確率でランダムに地雷を配置）
+  const initialBoard: CellData[] = Array.from({ length: cols * rows }, (_, index) => {
+    const x = index % cols;
+    const y = Math.floor(index / cols);
+
+    // 安全地帯（クリックしたマスとその周囲8マス）かどうか
+    const isSafeZone = Math.abs(x - safeX) <= 1 && Math.abs(y - safeY) <= 1;
+
+    return {
+      id: index,
+      status: 'hidden',
+      // 🌟 変更: 固定の0.2から動的な確率に変更
+      isMine: !isSafeZone && Math.random() < probability,
+      number: 0,
+    };
+  });
+
+  // 2. 地雷以外のマスについて、周囲8方向の地雷の数を計算する
+  for (let i = 0; i < initialBoard.length; i++) {
+    if (initialBoard[i].isMine) continue;
+
+    const x = i % cols;
+    const y = Math.floor(i / cols);
+    let mineCount = 0;
+
+    // 周囲8方向をループして確認
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        // 盤面の内側にある場合のみカウント
+        if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+          const neighborIndex = ny * cols + nx;
+          if (initialBoard[neighborIndex].isMine) {
+            mineCount++;
+          }
+        }
+      }
+    }
+    initialBoard[i].number = mineCount;
+  }
+
+  return initialBoard;
+};
+// --- ここまで追記 ---
+
+// --- 1. レベル1 & レベル2 を網羅したソルバー関数 ---
+const solveBoard = (board: CellData[], cols: number, rows: number, safeIndex: number): boolean => {
+  // シミュレーション用の盤面データを作成（状態を独立させる）
+  const simBoard = board.map(cell => ({
+    ...cell,
+    simStatus: 'hidden' as 'hidden' | 'revealed' | 'flagged'
+  }));
+
+  // 初回クリック位置を開く（0の連鎖オープンもここでシミュレート）
+  const openQueue = [safeIndex];
+  while (openQueue.length > 0) {
+    const idx = openQueue.pop()!;
+    if (simBoard[idx].simStatus !== 'hidden') continue;
+    simBoard[idx].simStatus = 'revealed';
+
+    // もし数字が0なら周囲も連鎖的に開く
+    if (simBoard[idx].number === 0 && !simBoard[idx].isMine) {
+      const x = idx % cols;
+      const y = Math.floor(idx / cols);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+            const nId = ny * cols + nx;
+            if (simBoard[nId].simStatus === 'hidden') {
+              openQueue.push(nId);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  let progress = true;
+  while (progress) {
+    progress = false;
+
+    // --- レベル1：基本ルール（局所推論） ---
+    for (let i = 0; i < simBoard.length; i++) {
+      const cell = simBoard[i];
+      if (cell.simStatus !== 'revealed' || cell.number === 0) continue;
+
+      const x = i % cols;
+      const y = Math.floor(i / cols);
+      const hiddenNeighbors: number[] = [];
+      let flaggedCount = 0;
+
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+            const nId = ny * cols + nx;
+            if (simBoard[nId].simStatus === 'hidden') {
+              hiddenNeighbors.push(nId);
+            } else if (simBoard[nId].simStatus === 'flagged') {
+              flaggedCount++;
+            }
+          }
+        }
+      }
+
+      // 条件A：隠しマス数 ＋ フラグ数 ＝ 数字 ならば、すべて地雷（フラグを立てる）
+      if (hiddenNeighbors.length + flaggedCount === cell.number && hiddenNeighbors.length > 0) {
+        for (const nId of hiddenNeighbors) {
+          if (simBoard[nId].simStatus !== 'flagged') {
+            simBoard[nId].simStatus = 'flagged';
+            progress = true;
+          }
+        }
+      }
+
+      // 条件B：フラグ数 ＝ 数字 ならば、残りの隠しマスはすべて安全（オープンする）
+      if (flaggedCount === cell.number && hiddenNeighbors.length > 0) {
+        for (const nId of hiddenNeighbors) {
+          if (simBoard[nId].simStatus === 'hidden') {
+            simBoard[nId].simStatus = 'revealed';
+            progress = true;
+          }
+        }
+      }
+    }
+
+    if (progress) continue;
+
+    // --- レベル2：サブセット論理（集合の引き算） ---
+    const constraints: { indices: Set<number>; mines: number }[] = [];
+    for (let i = 0; i < simBoard.length; i++) {
+      const cell = simBoard[i];
+      if (cell.simStatus !== 'revealed' || cell.number === 0) continue;
+
+      const x = i % cols;
+      const y = Math.floor(i / cols);
+      const hiddenIndices = new Set<number>();
+      let flaggedCount = 0;
+
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+            const nId = ny * cols + nx;
+            if (simBoard[nId].simStatus === 'hidden') {
+              hiddenIndices.add(nId);
+            } else if (simBoard[nId].simStatus === 'flagged') {
+              flaggedCount++;
+            }
+          }
+        }
+      }
+
+      const remainingMines = cell.number - flaggedCount;
+      if (hiddenIndices.size > 0) {
+        constraints.push({ indices: hiddenIndices, mines: remainingMines });
+      }
+    }
+
+    // 制約同士を比較して部分集合を検出
+    for (let p = 0; p < constraints.length; p++) {
+      for (let q = 0; q < constraints.length; q++) {
+        if (p === q) continue;
+        const c1 = constraints[p];
+        const c2 = constraints[q];
+
+        // c1 が c2 の完全な部分集合であるか (c1 ⊂ c2)
+        const isSubset = [...c1.indices].every(id => c2.indices.has(id));
+        if (isSubset && c1.indices.size < c2.indices.size) {
+          const diffIndices = [...c2.indices].filter(id => !c1.indices.has(id));
+          const diffMines = c2.mines - c1.mines;
+
+          if (diffMines === 0) {
+            // 差分マスはすべて安全
+            for (const id of diffIndices) {
+              if (simBoard[id].simStatus === 'hidden') {
+                simBoard[id].simStatus = 'revealed';
+                progress = true;
+              }
+            }
+          } else if (diffMines === diffIndices.length) {
+            // 差分マスはすべて地雷
+            for (const id of diffIndices) {
+              if (simBoard[id].simStatus !== 'flagged') {
+                simBoard[id].simStatus = 'flagged';
+                progress = true;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 最終判定：すべての非地雷マスが露出していればクリア可能（true）
+  return simBoard.every(cell => cell.isMine || cell.simStatus === 'revealed');
+};
+
+// --- 2. 解けるまで再生成を繰り返すラッパー関数 ---
+const generateGuessFreeBoard = (cols: number, rows: number, safeIndex: number, mineProbability: number): CellData[] => {
+  let attempts = 0;
+  while (attempts < 1000) { // 無限ループ防止の保険
+    // 既存の generateBoard 関数を流用してランダム配置を作成
+    const candidateBoard = generateBoard(cols, rows, safeIndex, mineProbability); // ※mineProbability引数に注意
+
+    // ソルバーに通して最後まで解けるか検証
+    if (solveBoard(candidateBoard, cols, rows, safeIndex)) {
+      return candidateBoard; // 運ゲーなしで解ける盤面なら決定！
+    }
+    attempts++;
+  }
+  // 万が一見つからなかった場合は最後の候補をそのまま返す
+  return generateBoard(cols, rows, safeIndex, mineProbability);
+};
 
 // ---------------------------------------------------------
 // Appコンポーネントのリファクタリング
@@ -169,58 +398,6 @@ function App() {
   // --- 🌟 変更: ミリ秒単位で時間を管理する State ---
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
-  // 盤面を自動生成し、地雷の配置と数字を計算する関数
-  // --- 🌟【修正】セーフスタート対応の盤面生成関数 ---
-  const generateBoard = (cols: number, rows: number, safeIndex: number): CellData[] => {
-    const safeX = safeIndex % cols;
-    const safeY = Math.floor(safeIndex / cols);
-    const probability = mineProbability / 100; // パーセンテージを小数に変換
-
-    // 1. マスを生成（安全地帯以外で20%の確率でランダムに地雷を配置）
-    const initialBoard: CellData[] = Array.from({ length: cols * rows }, (_, index) => {
-      const x = index % cols;
-      const y = Math.floor(index / cols);
-
-      // 安全地帯（クリックしたマスとその周囲8マス）かどうか
-      const isSafeZone = Math.abs(x - safeX) <= 1 && Math.abs(y - safeY) <= 1;
-
-      return {
-        id: index,
-        status: 'hidden',
-        // 🌟 変更: 固定の0.2から動的な確率に変更
-        isMine: !isSafeZone && Math.random() < probability,
-        number: 0,
-      };
-    });
-
-    // 2. 地雷以外のマスについて、周囲8方向の地雷の数を計算する
-    for (let i = 0; i < initialBoard.length; i++) {
-      if (initialBoard[i].isMine) continue;
-
-      const x = i % cols;
-      const y = Math.floor(i / cols);
-      let mineCount = 0;
-
-      // 周囲8方向をループして確認
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const nx = x + dx;
-          const ny = y + dy;
-          // 盤面の内側にある場合のみカウント
-          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
-            const neighborIndex = ny * cols + nx;
-            if (initialBoard[neighborIndex].isMine) {
-              mineCount++;
-            }
-          }
-        }
-      }
-      initialBoard[i].number = mineCount;
-    }
-
-    return initialBoard;
-  };
-  // --- ここまで追記 ---
   // --- 🌟 追加: 1秒ごとに時間を進めるタイマーのロジック ---
   // --- 🌟 変更: requestAnimationFrame を使った高精度タイマー ---
   useEffect(() => {
@@ -281,7 +458,7 @@ function App() {
     setBoard((prevBoard) => {
       // 🌟【重要】もしまだ地雷が配置されていない場合、クリックされたマスを安全地帯として盤面を生成
       const hasMines = prevBoard.some(cell => cell.isMine);
-      const currentBoard = hasMines ? prevBoard : generateBoard(cols, rows, id);
+      const currentBoard = hasMines ? prevBoard : generateGuessFreeBoard(cols, rows, id, mineProbability);
       // --- 🌟 追加: 初回クリック時（地雷生成の瞬間）にタイマーを開始 ---
       if (!hasMines) {
         setIsRunning(true);
