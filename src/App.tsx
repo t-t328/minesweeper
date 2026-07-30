@@ -45,7 +45,7 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
   // 共通のベーススタイル（サイズとFlexbox設定・1pxの均一ボーダー）
   // 🌟 修正: border色に dark:border-slate-600 を追加
   const baseStyle = "w-10 h-10 flex items-center justify-center font-mono font-bold "
-    + "text-xl select-none box-border border border-slate-400 dark:border-slate-600";
+    + "text-xl select-none box-border border border-slate-300 dark:border-slate-600";
 
   if (status === "hidden") {
     return (
@@ -54,9 +54,9 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
         onContextMenu={onRightClick}
         className={`
         ${baseStyle}
-        bg-slate-300 
+        bg-slate-400 
         dark:bg-slate-700     /* 👈 🌟 追加 */
-        hover:bg-slate-200 
+        hover:bg-slate-500 
         dark:hover:bg-slate-600 /* 👈 🌟 追加 */
         active:bg-slate-200/50
         dark:active:bg-slate-600/50 /* 👈 🌟 追加 */
@@ -123,7 +123,7 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
         onContextMenu={onRightClick}
         className={`
           ${baseStyle}
-          bg-slate-300 
+          bg-slate-400 
           dark:bg-slate-700 /* 👈 🌟 追加 */
           cursor-pointer
         `}
@@ -695,7 +695,7 @@ function App() {
         </div>
         {/* CSS Gridを使って3x3の盤面を構成 */}
         <div
-          className="inline-grid gap-0.5 bg-slate-400 dark:bg-slate-800 border-2 border-slate-500 dark:border-slate-700 p-1"
+          className="inline-grid gap-0.5 bg-slate-500 dark:bg-slate-800 border-2 border-slate-500 dark:border-slate-700 p-1"
           style={{ gridTemplateColumns: `repeat(${cols}, 2.5rem)` }}
         >
           {board.map((cell) => (
