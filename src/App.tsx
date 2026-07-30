@@ -43,7 +43,9 @@ const createEmptyBoard = (cols: number, rows: number): CellData[] => {
 // ---------------------------------------------------------
 function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick }: CellProps) {
   // 共通のベーススタイル（サイズとFlexbox設定・1pxの均一ボーダー）
-  const baseStyle = "w-10 h-10 flex items-center justify-center font-mono font-bold text-xl select-none box-border border border-slate-400";
+  // 🌟 修正: border色に dark:border-slate-600 を追加
+  const baseStyle = "w-10 h-10 flex items-center justify-center font-mono font-bold "
+    + "text-xl select-none box-border border border-slate-400 dark:border-slate-600";
 
   if (status === "hidden") {
     return (
@@ -52,12 +54,12 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
         onContextMenu={onRightClick}
         className={`
         ${baseStyle}
-        // 影を削除し、フラットな背景色を設定
         bg-slate-300 
-        // ホバー時は少し明るく
+        dark:bg-slate-700     /* 👈 🌟 追加 */
         hover:bg-slate-200 
-        // クリック時はさらに明るく（沈み込みの代わりに）
+        dark:hover:bg-slate-600 /* 👈 🌟 追加 */
         active:bg-slate-200/50
+        dark:active:bg-slate-600/50 /* 👈 🌟 追加 */
         transition-colors duration-75
         cursor-pointer
         `}
@@ -72,7 +74,7 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
       return (
         <div className={`
           ${baseStyle}
-          ${exploded ? 'bg-red-500' : 'bg-slate-200'}
+          ${exploded ? 'bg-red-500' : 'bg-slate-200 dark:bg-slate-800'} /* 👈 🌟 修正 */
         `}>
           💣
         </div>
@@ -81,14 +83,14 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
 
     const getNumberColor = (num: number) => {
       switch (num) {
-        case 1: return 'text-blue-600';
-        case 2: return 'text-green-600';
-        case 3: return 'text-red-600';
-        case 4: return 'text-indigo-900';
-        case 5: return 'text-amber-800';
-        case 6: return 'text-teal-600';
-        case 7: return 'text-purple-600';
-        case 8: return 'text-pink-600';
+        case 1: return 'text-blue-600 dark:text-blue-400';
+        case 2: return 'text-green-600 dark:text-green-400';
+        case 3: return 'text-red-600 dark:text-red-400';
+        case 4: return 'text-indigo-900 dark:text-indigo-400';
+        case 5: return 'text-amber-800 dark:text-amber-400';
+        case 6: return 'text-teal-600 dark:text-teal-400';
+        case 7: return 'text-purple-600 dark:text-purple-400';
+        case 8: return 'text-pink-600 dark:text-pink-400';
         default: return 'text-transparent';
       }
     };
@@ -99,7 +101,9 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
         className={`
           ${baseStyle}
           bg-slate-200 
+          dark:bg-slate-900      /* 👈 🌟 追加 */
           hover:bg-slate-300 
+          dark:hover:bg-slate-800 /* 👈 🌟 追加 */
           cursor-pointer 
           transition-colors
         `}
@@ -120,6 +124,7 @@ function GridCell({ status, number = 0, isMine, exploded, onClick, onRightClick 
         className={`
           ${baseStyle}
           bg-slate-300 
+          dark:bg-slate-700 /* 👈 🌟 追加 */
           cursor-pointer
         `}
       >
@@ -394,6 +399,17 @@ function App() {
   const totalMines = board.filter((cell) => cell.isMine).length;
   const estimatedMines = totalMines - flagCount;
   // --- ここまで追加 ---
+  // 🌟 追加: テーマを管理するState
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  // 🌟 追加: テーマ変更時に <html> タグの class を切り替える
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
   // --- 🌟 追加: タイマー用の State ---
   // --- 🌟 変更: ミリ秒単位で時間を管理する State ---
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -583,9 +599,20 @@ function App() {
 
   // 修正点2: 描画エリアを統一し、CSS Gridで3列に折り返すようにしました
   return (
-    <section id="main" className="flex items-center justify-center min-h-screen bg-slate-50">
+    // 🌟 修正: bg-slate-50 に dark:bg-slate-900 を追加
+    <section id="main" className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors">
       <div className="p-10">
-        <h1 className="mb-6 text-2xl font-bold text-center !text-slate-950">Minesweeper</h1>
+        {/* 🌟 修正: タイトルの右にテーマ切り替えボタンを追加 & ダーク時の文字色指定 */}
+        <div className="mb-6 flex items-center justify-center relative">
+          <h1 className="text-2xl font-bold !text-slate-950 dark:!text-white m-0">Minesweeper</h1>
+          <button
+            onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+            className="absolute right-0 p-2 text-sm rounded-full bg-slate-200 
+            dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+          >
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
+        </div>
         {/* --- 🌟 追加: タイトルの下のサイズ選択ボタン UI --- */}
         <div className="my-4 flex justify-center gap-2">
           {(Object.keys(DIFFICULTIES) as Difficulty[]).map((key) => (
@@ -609,8 +636,9 @@ function App() {
         </div>
         {/* --- ここまで --- */}
         {/* --- 🌟 追加: サイズ選択の下に配置した地雷確率のスライドバー UI --- */}
-        <div className="mb-4 flex flex-col items-center gap-1 bg-slate-100 p-3 rounded-md border border-slate-300">
-          <div className="flex justify-between w-full max-w-xs text-sm font-bold text-slate-700">
+        <div className="mb-4 flex flex-col items-center gap-1 bg-slate-100 dark:bg-slate-800 p-3 
+        rounded-md border border-slate-300 dark:border-slate-700">
+          <div className="flex justify-between w-full max-w-xs text-sm font-bold text-slate-700 dark:text-slate-300">
             <span>地雷確率</span>
             <span>{mineProbability}%</span>
           </div>
@@ -626,8 +654,8 @@ function App() {
           />
         </div>
         {/* --- ここからカウンター表示領域を追加 --- */}
-        <div className="mb-4 p-3 bg-slate-200 border-2 border-slate-300 rounded-md 
-          flex justify-between items-center font-mono font-bold text-slate-700 shadow-inner">
+        <div className="mb-4 p-3 bg-slate-200 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 rounded-md 
+          flex justify-between items-center font-mono font-bold text-slate-700 dark:text-slate-300 shadow-inner">
           <div className="flex items-center gap-1">
             <span className="text-xl">🚩</span>
             <span>旗: {flagCount}</span>
@@ -646,7 +674,7 @@ function App() {
         {/* --- ここまで追加 --- */}
         {/* 🌟 新機能: ゲーム状態の表示とリスタートボタン */}
         <div className="mb-4 flex items-center justify-between">
-          <div className="text-xl font-bold text-slate-700">
+          <div className="text-xl font-bold text-slate-700 dark:text-slate-300">
             {gameState === 'standby' && 'クリックしてスタート'} {/* 👈 🌟 追加 */}
             {gameState === 'playing' && `タイム: ${(elapsedTime / 1000).toFixed(2)}秒`}
             {gameState === 'gameOver' && 'ゲームオーバー'}
@@ -667,8 +695,7 @@ function App() {
         </div>
         {/* CSS Gridを使って3x3の盤面を構成 */}
         <div
-          className="inline-grid gap-0.5 bg-slate-400 border-2 border-slate-500 p-1"
-          // バッククォート (`) と ${} を使って、cols 変数を埋め込みます
+          className="inline-grid gap-0.5 bg-slate-400 dark:bg-slate-800 border-2 border-slate-500 dark:border-slate-700 p-1"
           style={{ gridTemplateColumns: `repeat(${cols}, 2.5rem)` }}
         >
           {board.map((cell) => (

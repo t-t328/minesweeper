@@ -1,3 +1,9 @@
+/* src/index.css (または src/App.css など) */
+@import "tailwindcss";
+
+/* 🌟 クラスベースのダークモードを手動で有効化する設定 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
